@@ -6,9 +6,8 @@ module.exports = {
     const now = new Date();
     return queryInterface.bulkInsert('Users', [
       {
-        name: '太郎',
-        email: 'taro@example.com',
-        password: bcrypt.hashSync('secret', bcrypt.genSaltSync(8)),
+        number: 2021330,
+        password: bcrypt.hashSync('test', bcrypt.genSaltSync(8)),
         createdAt: new Date(),
         updatedAt: new Date()
       },

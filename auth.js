@@ -12,13 +12,13 @@ app.set('view engine', 'mst');
 app.set('views', __dirname + '/views');
 
 passport.use(new LocalStrategy({
-    usernameField: 'email',
+    usernameField: 'number',
     passwordField: 'password'
-  }, (email, password, done) =>  {
+  }, (number, password, done) =>  {
 
     User.findOne({
       where: {
-        email: email
+        number: number
       }
     })
     .then(user => {

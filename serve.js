@@ -1,10 +1,12 @@
 require('dotenv').config()
 const express = require('express');
 const app = express();
+const http = require('http').Server(app);
+const io = require('socket.io')(http);
 const passport = require('./auth');
 const session = require('express-session');
 const flash = require('connect-flash');
-const port = 8000;
+const PORT = 3000;
 const cookieParser = require('cookie-parser');
 const crypto = require('crypto');
 
@@ -13,12 +15,51 @@ app.use(cookieParser());
 // 暗号化につかうキー
 const APP_KEY = 'YOUR-SECRET-KEY';
 
-// HTTPサーバを起動する
-app.listen(port, () => {
-  console.log(`listening at http://localhost:${port}`);
+const SerialPort = require('serialport');
+const parsers = SerialPort.parsers;
+const parser = new parsers.Readline({
+    delimiter: '\r\n'
 });
+const port = new SerialPort('/dev/ttyUSB0',{
+    baudRate: 115200
+});
+port.pipe(parser);
+
+var flag = 0;
+
+const receive = () => {
+  return new Promise(resolve => {
+    parser.on('data', (data) => {
+      console.log(data);
+      var mes = data;
+      if(mes.substr(1,2) == 'DB'){
+        if(mes.substr(7,2) == '01'){
+          console.log('communication success');
+          resolve(true);
+        }else{
+          console.log('communication error');
+          resolve(false);
+        }
+      }else if(mes.substr(1,2) == '00'){
+        var temp = mes.substr(29,2);
+        temp =  parseInt(temp, 16);
+        temp += 256;
+        temp /= 10;
+        console.log(temp);
+        resolve(temp);
+      }
+    });
+  })
+}
+
+async function endReceive(){
+  const result = await receive();
+  return result;
+}
 
 const mustacheExpress = require('mustache-express');
+const e = require('express');
+const { resolve } = require('path');
 app.engine('mst', mustacheExpress());
 app.set('view engine', 'mst');
 app.set('views', __dirname + '/views');
@@ -36,52 +77,40 @@ app.use(passport.session());
 
 const authMiddleware = (req, res, next) => {
   if(req.isAuthenticated()) {
-
     next();
-
   } else if(req.cookies.remember_me) {
-
     const [rememberToken, hash] = req.cookies.remember_me.split('|');
-
     User.findAll({
       where: {
         rememberToken: rememberToken
       }
     }).then(users => {
-
       for(let i in users) {
-
         const user = users[i];
-
         const verifyingHash = crypto.createHmac('sha256', APP_KEY)
           .update(user.id +'-'+ rememberToken)
           .digest('hex');
-
         if(hash === verifyingHash) {
-
           return req.login(user, () => {
-
             // セキュリティ的はここで remember_me を再度更新すべき
-
             next();
-
           });
-
         }
-
-
       }
-
       res.redirect(302, '/login');
-
     });
-
   } else {
-
     res.redirect(302, '/login');
-
   }
 };
+
+app.get('/qr', (req, res) => {
+  res.cookie('flag', true,{
+  	maxAge: 5*60*1000,
+	path: '/'
+  });
+  res.redirect('/login');
+});
 
 // ログインフォーム
 app.get('/login', (req, res) => {
@@ -96,7 +125,7 @@ app.post('/login',
   passport.authenticate('local', {
     failureRedirect: '/login',
     failureFlash: true,
-    badRequestMessage: '「メールアドレス」と「パスワード」は必須入力です。'
+    badRequestMessage: '「学籍番号」と「パスワード」は必須入力です。'
   }),
   (req, res, next) => {
 
@@ -124,9 +153,12 @@ app.post('/login',
 
   },
   (req, res) => {
-
-    res.redirect('/user');
-
+    if(req.cookies.flag){
+  	  res.clearCookie('flag');
+     	res.redirect('/user2');
+    }else{
+	    res.redirect('/user');
+     }
   }
 );
 
@@ -136,3 +168,40 @@ app.get('/user', authMiddleware, (req, res) => {
   res.send('ログイン完了！');
 });
 
+app.get('/user2', authMiddleware, (req, res) => {
+  port.write(':00A001FF01X', (err, results) => {
+    if(err) {
+        console.log('Err: '+err);
+        console.log('Results: '+results);
+    }
+  });
+  const user = req.user;
+  
+  endReceive().then(result => {
+    if(result){
+      res.send('Successful communication');
+    }else{
+      res.send('communication error');
+    }
+  });
+
+});
+
+io.on('connection',function(socket){
+  socket.on('message',function(msg){
+      console.log('message: ' + msg);
+      io.emit('message', msg);
+      port.write(msg, (err, results) => {
+          if(err) {
+              console.log('Err: '+err);
+              console.log('Results: '+results);
+          }
+      });
+  });
+});
+
+
+// HTTPサーバを起動する
+app.listen(PORT, () => {
+  console.log(`listening at http://localhost:${PORT}`);
+});

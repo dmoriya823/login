@@ -2,7 +2,7 @@
   "development": {
     "username": "root",
     "password": "superman",
-    "database": "login_test",
+    "database": "sakamoto",
     "host": "localhost",
     "dialect": "mariadb"
   },
