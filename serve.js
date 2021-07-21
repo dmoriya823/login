@@ -54,6 +54,13 @@ const receive = () => {
 
 async function endReceive(){
   const result = await receive();
+  
+  // if(result){
+  //   showMsg("成功しました");
+  // }else{
+  //   showMsg("失敗しました");
+  // }
+  
   return result;
 }
 
@@ -74,6 +81,9 @@ app.use(session({
 }));
 app.use(passport.initialize());
 app.use(passport.session());
+
+app.use(express.static('public'));
+// app.use(express.static(path.join(__dirname, 'public')));
 
 const authMiddleware = (req, res, next) => {
   if(req.isAuthenticated()) {
@@ -176,10 +186,26 @@ app.get('/user2', authMiddleware, (req, res) => {
     }
   });
   const user = req.user;
-  
+
+  var toString = Object.prototype.toString
   endReceive().then(result => {
     if(result){
-      res.send('Successful communication');
+      // res.send('Successful communication');
+      // console.log(toString.call(result));
+      res.render('login/wait.mst',{
+        wait: false
+      });
+      endReceive().then(result =>{
+        if(toString.call(result) == '[object Number]'){
+          console.log(result + ' receive');
+          // const temper = String(result);
+          // res.render('login/wait.mst',{
+          //   wait: true
+          // });
+        }else{
+          res.send('communication error');
+        }
+      });
     }else{
       res.send('communication error');
     }
