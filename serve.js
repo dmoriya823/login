@@ -26,11 +26,13 @@ const port = new SerialPort('/dev/ttyUSB0',{
 port.pipe(parser);
 
 var flag = 0;
+var num = 0;
+var id = 0;
 
 const receive = () => {
   return new Promise(resolve => {
     parser.on('data', (data) => {
-      console.log(data);
+      // console.log(data);
       var mes = data;
       if(mes.substr(1,2) == 'DB'){
         if(mes.substr(7,2) == '01'){
@@ -45,7 +47,7 @@ const receive = () => {
         temp =  parseInt(temp, 16);
         temp += 256;
         temp /= 10;
-        console.log(temp);
+        // console.log(temp);
         resolve(temp);
       }
     });
@@ -83,7 +85,24 @@ app.use(passport.initialize());
 app.use(passport.session());
 
 app.use(express.static('public'));
+// app.use(express.static('node_modules'));
+// app.use(express.static('models'));
 // app.use(express.static(path.join(__dirname, 'public')));
+
+const mysql = require('mysql');
+// const connection = mysql.createConnection({
+//   host: 'localhost',
+//   user: 'root',
+//   password: 'superman',
+//   database: 'sakamoto'
+// });
+const connection = mysql.createPool({
+  host: 'localhost',
+  user: 'root',
+  password: 'superman',
+  database: 'sakamoto'
+});
+
 
 const authMiddleware = (req, res, next) => {
   if(req.isAuthenticated()) {
@@ -115,10 +134,11 @@ const authMiddleware = (req, res, next) => {
 };
 
 app.get('/qr', (req, res) => {
-  res.cookie('flag', true,{
-  	maxAge: 5*60*1000,
-	path: '/'
-  });
+  // res.cookie('flag', true,{
+  // 	maxAge: 5*60*1000,
+	// path: '/'
+  // });
+  flag = 1;
   res.redirect('/login');
 });
 
@@ -147,6 +167,7 @@ app.post('/login',
     }
 
     const user = req.user;
+    num = user;
     const rememberToken = crypto.randomBytes(20).toString('hex'); // ランダムな文字列
     const hash = crypto.createHmac('sha256', APP_KEY)
       .update(user.id +'-'+ rememberToken)
@@ -163,19 +184,43 @@ app.post('/login',
 
   },
   (req, res) => {
-    if(req.cookies.flag){
-  	  res.clearCookie('flag');
-     	res.redirect('/user2');
+    // if(req.cookies.flag){
+  	//   res.clearCookie('flag');
+    //  	res.redirect('/user2');
+    // }else{
+	  //   res.redirect('/user');
+    //  }
+    if(flag == 1){
+      flag = 0;
+      res.redirect('/user2');
     }else{
-	    res.redirect('/user');
-     }
+      res.redirect('/user');
+    }
   }
 );
 
 // ログイン成功後のページ
 app.get('/user', authMiddleware, (req, res) => {
-  const user = req.user;
-  res.send('ログイン完了！');
+  num = req.user;
+
+  // connection.query('INSERT INTO Temperatures (number, temperature) VALUES (' + num.number + ',36.7)', (err,rows) => {
+  //   if(err) throw err;
+  //   console.log('Insert success');
+  // });
+
+  // res.redirect('user.html');
+  // res.sendFile(__dirname+'/public/userpage.html');
+  res.render('login/userpage', {
+    user: num.number
+  });
+
+  // console.log(user.number);
+
+  // connection.connect((err) => {
+  //   if(err) throw err;
+  //   console.log('Connected!');
+  // });
+
 });
 
 app.get('/user2', authMiddleware, (req, res) => {
@@ -185,49 +230,81 @@ app.get('/user2', authMiddleware, (req, res) => {
         console.log('Results: '+results);
     }
   });
-  const user = req.user;
 
-  var toString = Object.prototype.toString
+  // const user = req.user;
+  num = req.user;
+
+  //var toString = Object.prototype.toString
   endReceive().then(result => {
     if(result){
+      //res.sendFile(`${__dirname}/public/wait.html`);
+      res.redirect('/wait');
       // res.send('Successful communication');
       // console.log(toString.call(result));
-      res.render('login/wait.mst',{
-        wait: false
-      });
-      endReceive().then(result =>{
-        if(toString.call(result) == '[object Number]'){
-          console.log(result + ' receive');
-          // const temper = String(result);
-          // res.render('login/wait.mst',{
-          //   wait: true
-          // });
-        }else{
-          res.send('communication error');
-        }
-      });
+      // res.render('login/wait.mst',{
+      //   wait: false
+      // });
     }else{
       res.send('communication error');
     }
   });
-
 });
 
-io.on('connection',function(socket){
-  socket.on('message',function(msg){
-      console.log('message: ' + msg);
-      io.emit('message', msg);
-      port.write(msg, (err, results) => {
-          if(err) {
-              console.log('Err: '+err);
-              console.log('Results: '+results);
-          }
+app.get('/wait', authMiddleware, (req, res) => {
+  res.sendFile(`${__dirname}/public/wait.html`);
+  var toString = Object.prototype.toString;
+  endReceive().then(result =>{
+    if(toString.call(result) == '[object Number]'){
+      console.log(result + ' receive');
+      // const temper = String(result);
+      connection.query(`INSERT INTO Temperatures (number, temperature) VALUES (${num.number}, ${result})`, (err,rows) => {
+        if(err) throw err;
+        console.log('Insert success');
       });
+      if(id!=0){
+        io.to(id).emit('message', 'received');
+      }else{
+        console.log('id not found');
+      }
+      // res.sendFile(__dirname+'/userpage.html');
+    }else{
+      // res.send('communication error');
+      console.log('communication error');
+    }
   });
 });
 
+io.on('connection', socket => {
+  console.log('socket.id:' + socket.id);
+  io.to(socket.id).emit('message', 'which?');
+  socket.on('message', message => {
+    // console.log(message);
+    if(message == 'qr'){
+      id = socket.id;
+    }else if(message == 'user'){
+      connection.query(`SELECT temperature, createdAt FROM Temperatures WHERE number = ${num.number}`, (err,rows) => {
+        if(err) throw err;
+    
+        io.to(socket.id).emit('message', rows);
+      });    
+    }
+  });
+
+  // connection.connect((err) => {
+  //   if(err) throw err;
+  //   console.log('Connected!');
+  // });
+
+  //connection.query('SELECT temperature, createdAt FROM Temperatures WHERE number = ' + num.number, (err,rows) => {
+  // io.to(socket.id).emit('message', rows);
+  // 切断時に発生します.
+  socket.on('disconnect', reason => {
+    console.log(`disconnect: %s, %s`, reason, socket.id);
+    // connection.end();
+  });
+});
 
 // HTTPサーバを起動する
-app.listen(PORT, () => {
+http.listen(PORT, () => {
   console.log(`listening at http://localhost:${PORT}`);
 });

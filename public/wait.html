@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="ja">
+ 
+<head>
+    <meta charset="UTF-8">
+    <title>検温待ち</title>  
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="description" content="ディスクリプション">
+    
+    <link rel="stylesheet" href="/stylesheets/wait.css">
+    
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+
+    <script>
+        var socket = io();
+        socket.on('connect', () => {
+           console.log('connect success');
+        });
+
+        /* ------------------------------
+        Loading イメージ表示関数
+        引数： msg 画面に表示する文言
+        ------------------------------ */
+        function dispLoading(msg){
+            // 引数なし（メッセージなし）を許容
+            if( msg == undefined ){
+                msg = "";
+            }
+            // 画面表示メッセージ
+            var dispMsg = "<div class='loadingMsg'>" + msg + "</div>";
+            // ローディング画像が表示されていない場合のみ出力
+            if($("#loading").length == 0){
+                $("body").append("<div id='loading'>" + dispMsg + "</div>");
+            }
+        }
+        
+        /* ------------------------------
+        Loading イメージ削除関数
+        ------------------------------ */
+        function removeLoading(){
+            $("#loading").remove();
+        }
+
+        $(function(){
+            // 処理前に Loading 画像を表示
+            dispLoading("検温待ち...");
+        });
+
+        socket.on('message', data => {
+           console.log(data);
+            if(data == "which?"){
+                socket.emit('message', 'qr');
+            }else if(data == 'received'){
+               window.location.href = 'http://192.168.57.230/user';
+               socket.disconnect();
+           }
+        });
+
+    </script>
+</head>
+<body>
+</body>
